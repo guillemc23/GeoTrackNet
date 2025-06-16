@@ -28,11 +28,10 @@ Flag configuration.
 Adapted from the original script of FIVO.
 """
 
-import os
-import tensorflow as tf
-import pickle
 import math
+import os
 
+import tensorflow as tf
 
 ## Bretagne dataset
 # LAT_MIN = 46.5
@@ -70,6 +69,8 @@ tf.app.flags.DEFINE_string("bound", "elbo",
 tf.app.flags.DEFINE_integer("latent_size", 64,
                             "The size of the latent state of the model.")
 
+# Python 3.7 complained about being already defined, so deleted just in case
+delattr(tf.app.flags.FLAGS, 'log_dir') # comment if it gives any issues
 tf.app.flags.DEFINE_string("log_dir", "./chkpt",
                            "The directory to keep checkpoints and summaries in.")
 
@@ -85,9 +86,9 @@ tf.app.flags.DEFINE_float("ll_thresh", -17.47,
 # Dataset flags
 tf.app.flags.DEFINE_string("dataset_dir", "./data",
                            "Dataset directory")
-tf.app.flags.DEFINE_string("trainingset_name", "ct_aruba_2019/ct_aruba_2019_train.pkl",
+tf.app.flags.DEFINE_string("trainingset_name", "ct_2017010203_10_20/ct_2017010203_10_20_train.pkl",
                            "Path to load the trainingset from.")
-tf.app.flags.DEFINE_string("testset_name", "ct_aruba_2019/ct_aruba_2019_test.pkl",
+tf.app.flags.DEFINE_string("testset_name", "ct_2017010203_10_20/ct_2017010203_10_20_test.pkl",
                            "Path to load the testset from.")
 tf.app.flags.DEFINE_string("split", "train",
                            "Split to evaluate the model on. Can be 'train', 'valid', or 'test'.")
@@ -193,7 +194,8 @@ config = FLAGS
 #===============================================
 
 ## FOUR-HOT VECTOR 
-config.onehot_lat_bins = math.ceil((config.lat_max-config.lat_min)/config.onehot_lat_reso)
+# config.onehot_lat_bins = math.ceil((config.lat_max-config.lat_min)/config.onehot_lat_reso)
+config.onehot_lat_bins = 200 # the ct_2017010203_10_20 dataset has this structure (bins 200, 300, 70, 37 respectively)
 config.onehot_lon_bins = math.ceil((config.lon_max-config.lon_min)/config.onehot_lon_reso)
 config.onehot_sog_bins = math.ceil(SPEED_MAX/config.onehot_sog_reso)
 config.onehot_cog_bins = math.ceil(360/config.onehot_cog_reso)
