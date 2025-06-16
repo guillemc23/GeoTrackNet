@@ -13,22 +13,19 @@
 # limitations under the License.
 # =============================================================================
 
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
-
+from __future__ import absolute_import, division, print_function
 
 import os
 import time
 
-import numpy as np
 import tensorflow as tf
 
 import bounds
+import distribution_utils as dists
+import nested_utils as nested
 from data import datasets as datasets
 from models import vrnn
-import nested_utils as nested
-import distribution_utils as dists
+
 
 def create_eval_graph(inputs, targets, lengths, model, config):
     parallel_iterations=30
@@ -196,7 +193,7 @@ def create_eval_graph(inputs, targets, lengths, model, config):
 
 def create_dataset_and_model(config, shuffle, repeat):
 
-    inputs, targets, mmsis, time_starts, time_ends, lengths, mean = datasets.create_AIS_dataset(config.testset_path,
+    inputs, targets, mmsis, time_starts, time_ends, lengths, mean = datasets.create_AIS_dataset(config.testset_path, # shouldn't be this trainset?
                                                           os.path.join(os.path.dirname(config.trainingset_path),"mean.pkl"),
                                                           config.batch_size,
                                                           config.data_dim,

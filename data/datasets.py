@@ -29,14 +29,15 @@ This script is adapted from the original script of FIVO.
 """
 
 
-import numpy as np
-from math import radians, cos, sin, asin, sqrt
 import sys
+
+import numpy as np
+
 sys.path.append('..')
 import os
 import pickle
-import tensorflow as tf
 
+import tensorflow as tf
 
 LAT, LON, SOG, COG, HEADING, ROT, NAV_STT, TIMESTAMP, MMSI = list(range(9))
 
