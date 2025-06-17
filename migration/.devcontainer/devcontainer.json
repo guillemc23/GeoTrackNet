@@ -1,0 +1,35 @@
+{
+  "name": "Python",
+  // "postStartCommand": "apt-get update && apt-get install ffmpeg libsm6 libxext6  -y",
+  "containerEnv": {
+    "UV_INDEX_INDRA_USERNAME": "${localEnv:UV_INDEX_INDRA_USERNAME}",
+    "UV_INDEX_INDRA_PASSWORD": "${localEnv:UV_INDEX_INDRA_PASSWORD}"
+  },
+  //"mounts": [
+  //  "source=/datasets,target=/workspaces/defvmp-processor-dehazer/espacio,type=bind"
+  //],
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+                "njpwerner.autodocstring",
+                "fill-labs.dependi",
+                "mhutchie.git-graph",
+
+                "ms-python.isort",
+                "ms-python.python",
+                "ms-python.vscode-pylance",
+                "ms-python.debugpy",
+                "ms-toolsai.jupyter",
+
+                "charliermarsh.ruff",
+                "tamasfe.even-better-toml"
+        ]
+    }
+  },
+        "image": "ghcr.io/astral-sh/uv:0.5.20-python3.12-bookworm",
+	// "build": { "dockerfile": "Dockerfile" },
+        "features": {
+                "ghcr.io/devcontainers/features/git:1": {}
+        }
+}

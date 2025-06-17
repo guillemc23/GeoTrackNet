@@ -133,4 +133,4 @@ src/*/__pycache__
 
 # project specific
 chkpt
-migration
+data
