@@ -31,7 +31,7 @@ Adapted from the original script of FIVO.
 import math
 import os
 
-import tensorflow as tf
+import tensorflow.compat.v1 as tf
 
 ## Bretagne dataset
 # LAT_MIN = 46.5
@@ -55,6 +55,8 @@ LON_MAX = -87
 
 SPEED_MAX = 30.0  # knots
 FIG_DPI = 150
+
+
 
 # Shared flags.
 tf.app.flags.DEFINE_string("mode", "train",
@@ -165,7 +167,6 @@ tf.app.flags.DEFINE_boolean("stagger_workers", True,
 
 # Fix tf >=1.8.0 flags bug
 tf.app.flags.DEFINE_string('f', '', 'kernel')
-tf.app.flags.DEFINE_integer("data_dim", 0, "Data dimension")
 tf.app.flags.DEFINE_string('log_filename', '', 'Log filename')
 tf.app.flags.DEFINE_string('logdir_name', '', 'Log dir name')
 tf.app.flags.DEFINE_string('logdir', '', 'Log directory')
@@ -198,9 +199,6 @@ config.onehot_lon_bins = math.ceil((config.lon_max-config.lon_min)/config.onehot
 config.onehot_sog_bins = math.ceil(SPEED_MAX/config.onehot_sog_reso)
 config.onehot_cog_bins = math.ceil(360/config.onehot_cog_reso)
 
-config.data_dim  = config.onehot_lat_bins + config.onehot_lon_bins\
-                 + config.onehot_sog_bins + config.onehot_cog_bins # error with data_dimension
-
 ## LOCAL THRESHOLDING
 config.n_lat_cells = math.ceil((config.lat_max-config.lat_min)/config.cell_lat_reso)
 config.n_lon_cells = math.ceil((config.lon_max-config.lon_min)/config.cell_lon_reso)
@@ -221,7 +219,7 @@ print("Test set: " + config.testset_path)
 # log
 log_dir = config.bound + "-"\
      + os.path.basename(config.trainingset_name)\
-     + "-data_dim-" + str(config.data_dim)\
+     + "-data_dim-" + str(config.onehot_lat_bins + config.onehot_lon_bins+ config.onehot_sog_bins + config.onehot_cog_bins)\
      + "-latent_size-" + str(config.latent_size)\
      + "-batch_size-" + str(config.batch_size)
 config.logdir = os.path.join(config.log_dir,log_dir)

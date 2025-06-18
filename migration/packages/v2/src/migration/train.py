@@ -21,24 +21,27 @@ import time
 
 import tensorflow as tf
 
+tf.compat.v1.disable_v2_behavior()
+
 import migration.bounds as bounds
-from migration import datasets as datasets
 from migration.get_config import config
 from migration.models import vrnn
+from migration.models.dataset import datasets as datasets
 
 
 def create_dataset_and_model(config, shuffle, repeat):
+    """
 
+    """
     inputs, targets, mmsis, time_starts, time_ends, lengths, mean = datasets.create_AIS_dataset(config.trainingset_path,
                                                           os.path.join(os.path.dirname(config.trainingset_path),"training_mean.pkl"),
                                                           config.batch_size,
-                                                          config.data_dim,
                                                           config.onehot_lat_bins,
                                                           config.onehot_lon_bins,
                                                           config.onehot_sog_bins,
                                                           config.onehot_cog_bins,
                                                           shuffle=shuffle,
-                                                          repeat=repeat)
+                                                          repeat_indefinitely=repeat)
     # Convert the mean of the training set to logit space so it can be used to
     # initialize the bias of the generative distribution.
     generative_bias_init = -tf.math.log(1. / tf.clip_by_value(mean, 0.0001, 0.9999) - 1)

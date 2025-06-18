@@ -15,8 +15,6 @@
 
 """A set of utils for dealing with nested lists and tuples of Tensors."""
 
-from __future__ import absolute_import, division, print_function
-
 import tensorflow as tf
 from tensorflow.python.util import nest
 
