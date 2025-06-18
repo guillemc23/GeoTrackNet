@@ -85,7 +85,7 @@ def create_AIS_dataset(dataset_path,
 
 
     # Load the data from disk.
-    with tf.io.gfile.GFile(dataset_path, "rb") as f:
+    with tf.gfile.Open(dataset_path, "rb") as f:
         raw_data = pickle.load(f)
 
     num_examples = len(raw_data)
@@ -108,7 +108,7 @@ def create_AIS_dataset(dataset_path,
     if shuffle: dataset = dataset.shuffle(num_examples)             
               
     dataset = dataset.map(
-            lambda msg_, num_timesteps, mmsis, time_start, time_end: tuple(tf.compat.v1.py_func(sparse_AIS_to_dense,
+            lambda msg_, num_timesteps, mmsis, time_start, time_end: tuple(tf.py_func(sparse_AIS_to_dense,
                                                    [msg_, num_timesteps, mmsis, time_start, time_end],
                                                    [tf.float64, tf.int64, tf.int64, tf.float32, tf.float32])),
                                                 num_parallel_calls=num_parallel_calls)
@@ -122,9 +122,9 @@ def create_AIS_dataset(dataset_path,
 
     def process_AIS_batch(data, lengths, mmsis, time_start, time_end):
         """Create mean-centered and time-major next-step prediction Tensors."""
-        data = tf.cast(tf.transpose(a=data, perm=[1, 0, 2]), dtype=tf.float32)
-        lengths = tf.cast(lengths, dtype=tf.int32)
-        mmsis = tf.cast(mmsis, dtype=tf.int32)
+        data = tf.to_float(tf.transpose(data, perm=[1, 0, 2]))
+        lengths = tf.to_int32(lengths)
+        mmsis = tf.to_int32(mmsis)
         targets = data
 
         # Mean center the inputs.
@@ -132,10 +132,10 @@ def create_AIS_dataset(dataset_path,
                                     shape=[1, 1, mean.shape[0]])
         # Shift the inputs one step forward in time. Also remove the last
         # timestep so that targets and inputs are the same length.
-        inputs = tf.pad(tensor=data, paddings=[[1, 0], [0, 0], [0, 0]], mode="CONSTANT")[:-1]
+        inputs = tf.pad(data, [[1, 0], [0, 0], [0, 0]], mode="CONSTANT")[:-1]
         # Mask out unused timesteps.
         inputs *= tf.expand_dims(tf.transpose(
-            a=tf.sequence_mask(lengths, dtype=inputs.dtype)), 2)
+            tf.sequence_mask(lengths, dtype=inputs.dtype)), 2)
         return inputs, targets, lengths, mmsis, time_start, time_end
 
     dataset = dataset.map(process_AIS_batch,
@@ -144,6 +144,7 @@ def create_AIS_dataset(dataset_path,
 
 #    dataset = dataset.prefetch(num_examples)
     dataset = dataset.prefetch(50)
-    inputs, targets, lengths, mmsis, time_starts, time_ends = next(iter(dataset))
+    itr = dataset.make_one_shot_iterator()
+    inputs, targets, lengths, mmsis, time_starts, time_ends = itr.get_next()
     return inputs, targets, mmsis, time_starts, time_ends, lengths, tf.constant(mean, dtype=tf.float32)
 

@@ -83,7 +83,7 @@ tf.app.flags.DEFINE_float("ll_thresh", -17.47,
 
 
 # Dataset flags
-tf.app.flags.DEFINE_string("dataset_dir", "./data",
+tf.app.flags.DEFINE_string("dataset_dir", "../../data",
                            "Dataset directory")
 tf.app.flags.DEFINE_string("trainingset_name", "ct_2017010203_10_20/ct_2017010203_10_20_train.pkl",
                            "Path to load the trainingset from.")
