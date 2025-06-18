@@ -3,11 +3,10 @@ name = "migration"
 version = "0.1.2"
 description = "Add your description here"
 readme = "README.md"
-requires-python = ">=3.7"
+requires-python = ">=3.12"
 dependencies = [
-    "dm-sonnet<2.0.0",
-    "protobuf<=3.21.0",
-    "tensorflow<2.0.0",
+    "tensorflow>=2.19.0",
+    "tensorflow-probability>=0.25.0",
 ]
 
 [build-system]
@@ -19,5 +18,5 @@ only-include = ["src/migration"]
 
 [dependency-groups]
 dev = [
-    "ipykernel>=6.16.2",
+    "ipykernel>=6.29.5",
 ]
