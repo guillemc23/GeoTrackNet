@@ -20,7 +20,7 @@
         ]
     }
   },
-        "image": "ghcr.io/astral-sh/uv-python3.12-bookworm",
+        "image": "ghcr.io/astral-sh/uv:python3.12-bookworm",
 	// "build": { "dockerfile": "Dockerfile" },
         "features": {
                 "ghcr.io/devcontainers/features/git:1": {}
