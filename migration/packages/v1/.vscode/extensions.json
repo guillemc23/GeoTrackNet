@@ -1,0 +1,14 @@
+{
+    "recommendations": [
+        "njpwerner.autodocstring",
+        "fill-labs.dependi",
+        "mhutchie.git-graph",
+        "ms-python.isort",
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-python.debugpy",
+        "charliermarsh.ruff",
+        "usernamehw.errorlens",
+        "tamasfe.even-better-toml"
+    ]
+}

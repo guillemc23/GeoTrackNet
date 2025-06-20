@@ -1,0 +1,27 @@
+{
+  "name": "Python",
+  // "postStartCommand": "apt-get update && apt-get install ffmpeg libsm6 libxext6  -y",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+                "njpwerner.autodocstring",
+                "fill-labs.dependi",
+                "mhutchie.git-graph",
+
+                "ms-python.isort",
+                "ms-python.python",
+                "ms-python.vscode-pylance",
+                "ms-python.debugpy",
+                "ms-toolsai.jupyter",
+
+                "charliermarsh.ruff",
+                "tamasfe.even-better-toml"
+        ]
+    }
+  },
+        "image": "ghcr.io/astral-sh/uv:0.5.20-python3.12-bookworm", // Needed to install python 3.7
+        "features": {
+                "ghcr.io/devcontainers/features/git:1": {}
+        }
+}
