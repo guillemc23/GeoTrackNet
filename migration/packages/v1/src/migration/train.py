@@ -30,7 +30,7 @@ from migration.models import vrnn
 def create_dataset_and_model(config, shuffle, repeat):
 
     inputs, targets, mmsis, time_starts, time_ends, lengths, mean = datasets.create_AIS_dataset(config.trainingset_path,
-                                                          os.path.join(os.path.dirname(config.trainingset_path),"training_mean.pkl"),
+                                                          os.path.join(os.path.dirname(config.trainingset_path),"mean.pkl"),
                                                           config.batch_size,
                                                           config.data_dim,
                                                           config.onehot_lat_bins,
