@@ -1,13 +1,6 @@
 {
   "name": "Python",
   // "postStartCommand": "apt-get update && apt-get install ffmpeg libsm6 libxext6  -y",
-  "containerEnv": {
-    "UV_INDEX_INDRA_USERNAME": "${localEnv:UV_INDEX_INDRA_USERNAME}",
-    "UV_INDEX_INDRA_PASSWORD": "${localEnv:UV_INDEX_INDRA_PASSWORD}"
-  },
-  //"mounts": [
-  //  "source=/datasets,target=/workspaces/defvmp-processor-dehazer/espacio,type=bind"
-  //],
 
   "customizations": {
     "vscode": {
