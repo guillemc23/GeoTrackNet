@@ -29,15 +29,6 @@ from migration.models import vrnn
 from migration.models.dataset import datasets as datasets
 
 
-class elbo(tf.Loss):
-    def call(self, y_true, y_pred):
-                # Compute lower bounds on the log likelihood.
-        ll_per_seq, _, _, _ = bounds.elbo(model,
-                                            (inputs, targets),
-                                            lengths,
-                                            num_samples=1)
-        return ops.mean(ops.square(y_pred - y_true), axis=-1)
-
 def create_dataset_and_model(config, shuffle, repeat):
     """
 
@@ -91,23 +82,24 @@ def wait_for_checkpoint(saver, sess, logdir):
             time.sleep(60)
 
 
-class LoggingTensorCallback(tf.keras.callbacks.Callback):
-    def __init__(self, every_n_inter : int, bound_label : str, normalize_by_seq_len : bool):
-        super().__init__()
-        self._every_n_iter = every_n_inter
-        self._log_count = every_n_inter
-        self._bound_label = bound_label + (' per timestep' if normalize_by_seq_len else 'per sequence') 
-
-    def on_batch_end(self, batch : int, logs : dict[str]=None):
-        if self._log_count > 0:
-            self._log_count -= 1
-            print(f"Step {batch}, {self._bound_label}, {logs['bound_value']}")
-        else:
-            self._log_count -= self._every_n_iter
-
-
-
 def run_train(config):
+
+    def create_logging_hook(step, bound_value):
+        """Creates a logging hook that prints the bound value periodically."""
+        bound_label = config.bound + " bound"
+        if config.normalize_by_seq_len:
+            bound_label += " per timestep"
+        else:
+            bound_label += " per sequence"
+        def summary_formatter(log_dict):
+            return "Step %d, %s: %f" % (
+                        log_dict["step"], bound_label, log_dict["bound_value"])
+        logging_hook = tf.estimator.LoggingTensorHook(
+                                {"step": step,
+                                 "bound_value": bound_value},
+                                every_n_iter=config.summarize_every,
+                                formatter=summary_formatter)
+        return logging_hook
 
     def create_loss():
         """Creates the loss to be optimized.
@@ -121,11 +113,18 @@ def run_train(config):
                                                                shuffle=True,
                                                                repeat=True)
         # Compute lower bounds on the log likelihood.
-        ll_per_seq, _, _, _ = bounds.elbo(model,
-                                            (inputs, targets),
-                                            lengths,
-                                            num_samples=1)
-        
+        if config.bound == "elbo":
+            ll_per_seq, _, _, _ = bounds.elbo(model,
+                                              (inputs, targets),
+                                              lengths,
+                                              num_samples=1)
+        elif config.bound == "fivo":
+            ll_per_seq, _, _, _, _ = bounds.fivo(model,
+                                                 (inputs, targets),
+                                                 lengths,
+                                                 num_samples=config.num_samples,
+                                                 resampling_criterion=bounds.ess_criterion)
+        # Compute loss scaled by number of timesteps.
         ll_per_t = tf.reduce_mean(input_tensor=ll_per_seq / tf.cast(lengths, dtype=tf.float32))
         ll_per_seq = tf.reduce_mean(input_tensor=ll_per_seq)
 
@@ -141,7 +140,7 @@ def run_train(config):
         """Creates the training graph."""
         global_step = tf.compat.v1.train.get_or_create_global_step()
         bound, loss = create_loss()
-        opt = tf.keras.optimizers.Adam(learning_rate=config.learning_rate)
+        opt = tf.compat.v1.train.AdamOptimizer(config.learning_rate)
         grads = opt.compute_gradients(loss, var_list=tf.compat.v1.trainable_variables())
         train_op = opt.apply_gradients(grads, global_step=global_step)
         return bound, train_op, global_step

@@ -21,13 +21,6 @@ import tensorflow as tf
 import tensorflow_probability as tfp
 from tensorflow.keras import Layer, Model
 
-from migration.models.distributions import (
-  ConditionalBernoulliDistribution,
-  ConditionalNormalDistribution,
-  NormalApproximatePosterior,
-)
-from migration.models.legacy.mlp import get_mlp
-
 
 class VRNNCell(Model):
 
@@ -40,7 +33,7 @@ class VRNNCell(Model):
                approx_posterior : Layer,
                generative : Layer,
                random_seed=None,
-               name="vrnn"):
+               name="vrnn_cell"):
     """Creates a VRNN cell.
 
     Args:
@@ -132,7 +125,6 @@ class VRNNCell(Model):
     # Encode the data.
     inputs_encoded = self.data_feat_extractor(inputs)                           # phi_x(x_t-1)
     targets_encoded = self.data_feat_extractor(targets)                         # phi_x(x_t)
-    
     # Run the RNN cell.
     rnn_inputs = tf.concat([inputs_encoded, prev_latent_encoded], axis=1)
     rnn_out, new_rnn_state = self.rnn_cell(rnn_inputs, rnn_state)               # STEP 3: o_t, h_t = RNN(phi_x(x_t-1), phi_z(z_t-1), h_t-1)
@@ -182,98 +174,3 @@ class VRNNCell(Model):
     return (log_q_z, log_p_z, log_p_x_given_z, analytic_kl,
             (new_rnn_state, latent_encoded_return), rnn_out, dists_return)
           
-
-_DEFAULT_INITIALIZERS = {"w": tf.keras.initializers.VarianceScaling(scale=1.0, mode="fan_avg", distribution="uniform"),
-                         "b": tf.zeros_initializer()}
-
-
-def create_vrnn(
-    data_size : int,
-    latent_size : int,
-    generative_class,
-    sigma_min=0.0,
-    raw_sigma_bias=0.25,
-    generative_bias_init=0.0,
-    initializers=None,
-    random_seed=None):
-  """A factory method for creating VRNN cells.
-
-  Args:
-    data_size: The dimension of the vectors that make up the data sequences.
-    latent_size: The size of the stochastic latent state of the VRNN.
-    generative_class: The class of the generative distribution. Can be either
-      ConditionalNormalDistribution or ConditionalBernoulliDistribution.
-    rnn_hidden_size: The hidden state dimension of the RNN that forms the
-      deterministic part of this VRNN. If None, then it defaults
-      to latent_size.
-    fcnet_hidden_sizes: A list of python integers, the size of the hidden
-      layers of the fully connected networks that parameterize the conditional
-      distributions of the VRNN. If None, then it defaults to one hidden
-      layer of size latent_size.
-    encoded_data_size: The size of the output of the data encoding network. If
-      None, defaults to latent_size.
-    encoded_latent_size: The size of the output of the latent state encoding
-      network. If None, defaults to latent_size.
-    sigma_min: The minimum value that the standard deviation of the
-      distribution over the latent state can take.
-    raw_sigma_bias: A scalar that is added to the raw standard deviation
-      output from the neural networks that parameterize the prior and
-      approximate posterior. Useful for preventing standard deviations close
-      to zero.
-    generative_bias_init: A bias to added to the raw output of the fully
-      connected network that parameterizes the generative distribution. Useful
-      for initalizing the mean of the distribution to a sensible starting point
-      such as the mean of the training data. Only used with Bernoulli generative
-      distributions.
-    initializers: The variable intitializers to use for the fully connected
-      networks and RNN cell. Must be a dictionary mapping the keys 'w' and 'b'
-      to the initializers for the weights and biases. Defaults to xavier for
-      the weights and zeros for the biases when initializers is None.
-    random_seed: A random seed for the VRNN resampling operations.
-  Returns:
-    model: A VRNNCell object.
-  """
-
-  if initializers is None:
-    # TODO: review initializers
-    initializers = _DEFAULT_INITIALIZERS
-
-
-  data_feat_extractor = get_mlp(
-    layer_sizes=[latent_size, latent_size],
-    initializers=_DEFAULT_INITIALIZERS,   
-
-  )
-  latent_feat_extractor = get_mlp(
-    layer_sizes=[latent_size, latent_size],
-    initializers=_DEFAULT_INITIALIZERS,
-
-  )
-  prior = ConditionalNormalDistribution(
-      size=latent_size,
-      hidden_layer_size=latent_size,
-      sigma_min=sigma_min,
-      raw_sigma_bias=raw_sigma_bias,
-      initializers=initializers)
-  approx_posterior = NormalApproximatePosterior(
-      size=latent_size,
-      hidden_layer_size=latent_size,
-      sigma_min=sigma_min,
-      raw_sigma_bias=raw_sigma_bias,
-      initializers=initializers)
-  if generative_class == ConditionalBernoulliDistribution:
-    generative = ConditionalBernoulliDistribution(
-        size=data_size,
-        hidden_layer_size=latent_size,
-        initializers=initializers,
-        bias_init=generative_bias_init)
-  else:
-    generative = ConditionalNormalDistribution(
-        size=data_size,
-        hidden_layer_size=latent_size,
-        initializers=initializers)
-  # weight initializer maybe?
-  # TODO: review
-  rnn_layer = tf.keras.layers.LSTMCell(latent_size, kernel_initializer=initializers['w'])
-  return VRNNCell(rnn_layer, data_feat_extractor, latent_feat_extractor, latent_size,
-                  prior, approx_posterior, generative, random_seed=random_seed)

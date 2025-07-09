@@ -3,11 +3,12 @@ import tensorflow_probability as tfp
 from tensorflow.keras import layers
 
 
+# un input
 class ConditionalNormalDistribution(layers.Layer):
   """A Normal distribution conditioned on Tensor inputs via a fc network."""
 
   def __init__(self, size : int, hidden_layer_size : int, sigma_min : int =0.0,
-               raw_sigma_bias=0.25):
+               raw_sigma_bias=0.25, initializers : dict = None, name=None):
     """Creates a conditional Normal distribution.
 
     Args:
@@ -19,11 +20,11 @@ class ConditionalNormalDistribution(layers.Layer):
         output from the fully connected network. Set to 0.25 by default to
         prevent standard deviations close to 0.
     """
-    super().__init__()
+    super().__init__(name=name)
     
     # Trainable parameters
-    self.dense1 = layers.Dense(hidden_layer_size, activation="relu")
-    self.dense2 = layers.Dense(2*size, activation=None)
+    self.dense1 = layers.Dense(hidden_layer_size, activation="relu", kernel_initializer=initializers['w'], bias_initializer=initializers['b'])
+    self.dense2 = layers.Dense(2*size, activation=None, kernel_initializer=initializers['w'], bias_initializer=initializers['b'])
 
     # static parameters
     self.sigma_min = sigma_min
@@ -42,12 +43,13 @@ class ConditionalNormalDistribution(layers.Layer):
     sigma = tf.maximum(tf.nn.softplus(sigma + self.raw_sigma_bias), self.sigma_min)
     return mu, sigma
   
-  def call(self, inputs : tf.Tensor) -> tuple[tf.Tensor, tf.Tensor]:
+  # input: (batch_size, samples)
+  def call(self, input : tf.Tensor) -> tuple[tf.Tensor, tf.Tensor]:
     """Creates a normal distribution conditioned on the inputs."""
-    mu, sigma = self._estimate_mu_and_sigma(inputs)
+    mu, sigma = self._estimate_mu_and_sigma(input)
     return tfp.distributions.Normal(loc=mu, scale=sigma)
   
-
+# dos inputs
 class NormalApproximatePosterior(ConditionalNormalDistribution):
   """A Normally-distributed approx. posterior with res_q parameterization."""
 
@@ -68,10 +70,15 @@ class NormalApproximatePosterior(ConditionalNormalDistribution):
     mu, sigma = super(NormalApproximatePosterior, self)._estimate_mu_and_sigma(inputs)
     return mu + prior_mu, sigma
 
+  def call(self, input : tf.Tensor, prior_mu : int) -> tuple[tf.Tensor, tf.Tensor]:
+    """Creates a normal distribution conditioned on the inputs."""
+    mu, sigma = self._estimate_mu_and_sigma(input, prior_mu)
+    return tfp.distributions.Normal(loc=mu, scale=sigma)
+
 class ConditionalBernoulliDistribution(layers.Layer):
   """A Normal distribution conditioned on Tensor inputs via a fc network."""
 
-  def __init__(self, size : int, hidden_layer_size : int, bias_init : float = 0.0):
+  def __init__(self, size : int, hidden_layer_size : int, bias_init : float = 0.0, initializers : dict = None, name=None):
     """Creates a conditional Normal distribution.
 
     Args:
@@ -83,13 +90,14 @@ class ConditionalBernoulliDistribution(layers.Layer):
         output from the fully connected network. Set to 0.25 by default to
         prevent standard deviations close to 0.
     """
-    super().__init__()
+    super().__init__(name=name)
 
     self.bias_init = bias_init
 
     # Trainable parameters
-    self.dense1 = layers.Dense(hidden_layer_size, activation="relu")
-    self.dense2 = layers.Dense(size, activation=None)
+    self.dense1 = layers.Dense(hidden_layer_size, activation="relu", kernel_initializer=initializers['w'], bias_initializer=initializers['b'])
+    self.dense2 = layers.Dense(size, activation=None, kernel_initializer=initializers['w'], bias_initializer=initializers['b'])
+
 
     # static parameters
     self.bias_init = bias_init
