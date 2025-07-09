@@ -1,0 +1,28 @@
+{
+  "name": "Python",
+  // "postStartCommand": "apt-get update && apt-get install ffmpeg libsm6 libxext6  -y",
+
+  "customizations": {
+    "vscode": {
+      "extensions": [
+                "njpwerner.autodocstring",
+                "fill-labs.dependi",
+                "mhutchie.git-graph",
+
+                "ms-python.isort",
+                "ms-python.python",
+                "ms-python.vscode-pylance",
+                "ms-python.debugpy",
+                "ms-toolsai.jupyter",
+
+                "charliermarsh.ruff",
+                "tamasfe.even-better-toml"
+        ]
+    }
+  },
+        "image": "ghcr.io/astral-sh/uv:python3.12-bookworm",
+	// "build": { "dockerfile": "Dockerfile" },
+        "features": {
+                "ghcr.io/devcontainers/features/git:1": {}
+        }
+}
