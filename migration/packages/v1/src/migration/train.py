@@ -21,12 +21,14 @@ import time
 
 import tensorflow as tf
 
-import migration.bounds as bounds
 from migration import datasets as datasets
+from migration.elbo import elbo
+from migration.fivo import ess_criterion, fivo
 from migration.get_config import config
 from migration.models import vrnn
 
 
+# get batch and model
 def create_dataset_and_model(config, shuffle, repeat):
 
     inputs, targets, mmsis, time_starts, time_ends, lengths, mean = datasets.create_AIS_dataset(config.trainingset_path,
@@ -106,21 +108,21 @@ def run_train(config):
             loss: A float Tensor that when differentiated yields the gradients
                 to apply to the model. Should be optimized via gradient descent.
         """
-        inputs, targets, mmsis, time_starts, time_ends, lengths, model = create_dataset_and_model(config,
+        inputs, targets, _, _, _, lengths, model = create_dataset_and_model(config,
                                                                shuffle=True,
                                                                repeat=True)
         # Compute lower bounds on the log likelihood.
         if config.bound == "elbo":
-            ll_per_seq, _, _, _ = bounds.elbo(model,
+            ll_per_seq, _, _, _ = elbo(model,
                                               (inputs, targets),
                                               lengths,
                                               num_samples=1)
         elif config.bound == "fivo":
-            ll_per_seq, _, _, _, _ = bounds.fivo(model,
+            ll_per_seq, _, _, _, _ = fivo(model,
                                                  (inputs, targets),
                                                  lengths,
                                                  num_samples=config.num_samples,
-                                                 resampling_criterion=bounds.ess_criterion)
+                                                 resampling_criterion=ess_criterion)
         # Compute loss scaled by number of timesteps.
         ll_per_t = tf.reduce_mean(input_tensor=ll_per_seq / tf.cast(lengths, dtype=tf.float32))
         ll_per_seq = tf.reduce_mean(input_tensor=ll_per_seq)
@@ -170,6 +172,11 @@ def run_train(config):
                         _, cur_step = sess.run([train_op, global_step])
 #                         _, cur_step = sess.run([train_op, global_step])
 
+
+# def run_train_v2(config):
+#     opt = tf.keras.optimizers.Adam(config.learning_rate)
+#     with tf.GradientTape() as tape:
+        
 if __name__ == '__main__':
     print(config.trainingset_path)
     fh = logging.FileHandler(os.path.join(config.logdir,config.log_filename+".log"))
@@ -177,4 +184,4 @@ if __name__ == '__main__':
     # get TF logger
     logger = logging.getLogger('tensorflow')
     logger.addHandler(fh)
-    run_train(config)
+    run_train(config)  

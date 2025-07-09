@@ -177,6 +177,8 @@ class VRNNCell(snt.AbstractModule):
     rnn_out, new_rnn_state = self.rnn_cell(rnn_inputs, rnn_state)               # STEP 3: o_t, h_t = RNN(phi_x(x_t-1), phi_z(z_t-1), h_t-1)
     # Create the prior and approximate posterior distributions.
     latent_dist_prior = self.prior(rnn_out)                                     # STEP 1: p(z_t|h_t) = phi_prior(o_t) = p(z_t|x_<t, z_<t)
+
+    # TODO: should concat here?
     latent_dist_q = self.approx_posterior(rnn_out, targets_encoded,             # STEP 4: q(z_t|x_t) = phi_enc(o_t, phi_x(x_t))
                                           prior_mu=latent_dist_prior.loc)
     # Sample the new latent state z and encode it.

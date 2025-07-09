@@ -21,6 +21,7 @@ import tensorflow as tf
 from tensorflow.python.util import nest
 
 
+# >> map_nested(lambda x: x+1, [1, (3, 4.3)]) returns [2, (4, 5.3)]
 def map_nested(map_fn, nested):
   """Executes map_fn on every element in a (potentially) nested structure.
 
@@ -91,7 +92,9 @@ def tas_for_tensors(tensors, length):
       in 'tensors'.
   """
   def map_fn(x):
-    ta = tf.TensorArray(x.dtype, length, name=x.name.split(':')[0] + '_ta')
+    ta = tf.TensorArray(x.dtype, length, 
+                        # name=x.name.split(':')[0] + '_ta'
+                        )
     return ta.unstack(x[:length, :])
   return map_nested(map_fn, tensors)
 
