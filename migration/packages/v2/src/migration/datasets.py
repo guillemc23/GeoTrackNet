@@ -131,7 +131,7 @@ def get_Tensorflow_AIS_dataset(dataset_path,
                        lon_bins,
                        sog_bins,
                        cog_bins,
-                       num_parallel_calls=DEFAULT_PARALLELISM,
+                       num_parallel_calls=tf.data.AUTOTUNE,
                        shuffle=True,
                        repeat=True) -> tf.data.Dataset:
     total_bins = lat_bins+lon_bins+sog_bins+cog_bins
@@ -207,11 +207,12 @@ def get_Tensorflow_AIS_dataset(dataset_path,
         return inputs, targets, lengths
 
     dataset = dataset.map(process_AIS_batch,
-                          num_parallel_calls=num_parallel_calls)
+                          num_parallel_calls=tf.data.AUTOTUNE)
 
 
 #    dataset = dataset.prefetch(num_examples)
-    dataset = dataset.prefetch(50)
+    dataset = dataset.prefetch(tf.data.AUTOTUNE)
+    dataset = dataset.cache()
     return dataset
 
 

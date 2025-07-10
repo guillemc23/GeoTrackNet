@@ -22,6 +22,8 @@ import numpy as np
 import tensorflow as tf
 from pydantic import PositiveInt
 from rich.progress import Progress
+
+# from tensorflow.keras import mixed_precision
 from tqdm import tqdm
 
 import migration.datasets as datasets
@@ -30,6 +32,7 @@ from migration.models import vrnn
 from migration.models.vrnn_elbo import VRNN
 from migration.utils import AverageMeter, console, logger
 
+# mixed_precision.set_global_policy('mixed_float16')
 
 def _get_config() -> TrainingConfig:
     return TrainingConfig(
@@ -45,6 +48,28 @@ def _get_config() -> TrainingConfig:
 def get_cached_datasets() -> tuple[tf.data.Dataset, tf.data.Dataset]:
     train = tf.data.Dataset.load('../data/tensorflow/train')
     validation = tf.data.Dataset.load('../data/tensorflow/validation')
+    return train, validation
+
+
+def get_datasets(cfg : DatasetConfig) -> tuple[tf.data.Dataset, tf.data.Dataset]:
+    train = datasets.get_Tensorflow_AIS_dataset(
+                    cfg.training_pickle,
+                    cfg.batch_size,
+                    cfg.encoding_bins.lat,
+                    cfg.encoding_bins.lon, 
+                    cfg.encoding_bins.sog,
+                    cfg.encoding_bins.cog, 
+                    shuffle=cfg.shuffle,
+                    repeat=False)
+    validation = datasets.get_Tensorflow_AIS_dataset(
+                    cfg.validation_pickle,
+                    cfg.batch_size,
+                    cfg.encoding_bins.lat,
+                    cfg.encoding_bins.lon, 
+                    cfg.encoding_bins.sog,
+                    cfg.encoding_bins.cog, 
+                    shuffle=cfg.shuffle,
+                    repeat=False)
     return train, validation
 
 # get batch and model
@@ -201,14 +226,15 @@ def main(models_dir : Path, exp : str):
     for epoch in tqdm(range(start_epoch, cfg.epochs)):
         logger.info(f"Training epoch {epoch}...")
         loss = do_train_epoch(train_dataset, model, optimizer)
-        logger.info(f"Training epoch {epoch}\tLoss: {loss}")
+        logger.info(f"Training epoch {epoch}\tLoss: {loss:.2f}")
 
         if epoch % cfg.eval_frequency == 0:
             logger.info(f"Validating epoch {epoch}...")
             avg_log_likelihood = do_validate_epoch(val_dataset, model)
-            logger.info(f"Validation epoch {epoch}\tLog Likelihood: {avg_log_likelihood}")
+            logger.info(f"Validation epoch {epoch}\tLog Likelihood: {avg_log_likelihood:.2f}\tLikelihood: {np.exp(avg_log_likelihood):.2e}")
             if avg_log_likelihood > ckpt.best_log_likelihood:
-                logger.info(f"Log likelihood improved {ckpt.best_log_likelihood.numpy()} -> {avg_log_likelihood.numpy()}, saving model...")
+                logger.info(f"Log likelihood improved {ckpt.best_log_likelihood.numpy():.2f} -> {avg_log_likelihood.numpy():.2f}, saving model...")
+                logger.info(f"  Likelihood improvement: {np.exp(ckpt.best_log_likelihood.numpy()):.2e} -> {np.exp(avg_log_likelihood.numpy()):.2e}")
                 ckpt.best_log_likelihood.assign(avg_log_likelihood)
                 model.save_weights(model_path, overwrite=True)
         
