@@ -31,7 +31,11 @@ class OneHotBins(BaseModel):
         return self.lat+self.lon+self.sog+self.cog
     
 class DatasetConfig(BaseModel):
-    training_pickle : FilePath
+    training_pickle : FilePath = None
+    validation_pickle : FilePath = None
+    test_pickle : FilePath = None
+    
+
     mean_pickle : FilePath
     batch_size : PositiveInt = Field(32)
     shuffle : bool = Field(False)
@@ -48,6 +52,7 @@ class TrainingConfig(BaseSettings):
     # runtime
     random_seed : PositiveInt = Field(11)
     learning_rate : PositiveFloat = Field(0.0003)
-    epochs : PositiveInt = Field(5)
+    epochs : PositiveInt = Field(20)
+    eval_frequency : PositiveInt = 1
     # output
     log_dir : Path = Field(Path('./chkpt'))
