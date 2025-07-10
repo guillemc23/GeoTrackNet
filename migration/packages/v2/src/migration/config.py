@@ -43,7 +43,7 @@ class DatasetConfig(BaseModel):
 
 class ModelConfig(BaseModel):
     bound : OptimizedBound = OptimizedBound.elbo
-    latent_size : PositiveInt = Field(64)
+    latent_size : PositiveInt = Field(128)
 
 class TrainingConfig(BaseSettings):
     # input
