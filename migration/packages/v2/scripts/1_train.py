@@ -27,9 +27,10 @@ from rich.progress import Progress
 from tqdm import tqdm
 
 import migration.datasets as datasets
-from migration.config import DatasetConfig, TrainingConfig
+from migration.config import DatasetConfig, OptimizedBound, TrainingConfig
 from migration.models import vrnn
 from migration.models.vrnn_elbo import VRNN
+from migration.models.vrnn_fivo import VRNNboundFIVO
 from migration.utils import AverageMeter, console, logger
 
 # mixed_precision.set_global_policy('mixed_float16')
@@ -60,7 +61,7 @@ def get_datasets(cfg : DatasetConfig) -> tuple[tf.data.Dataset, tf.data.Dataset]
                     cfg.encoding_bins.sog,
                     cfg.encoding_bins.cog, 
                     shuffle=cfg.shuffle,
-                    repeat=False)
+                    repeat=True)
     validation = datasets.get_Tensorflow_AIS_dataset(
                     cfg.validation_pickle,
                     cfg.batch_size,
@@ -69,7 +70,7 @@ def get_datasets(cfg : DatasetConfig) -> tuple[tf.data.Dataset, tf.data.Dataset]
                     cfg.encoding_bins.sog,
                     cfg.encoding_bins.cog, 
                     shuffle=cfg.shuffle,
-                    repeat=False)
+                    repeat=True)
     return train, validation
 
 # get batch and model
@@ -85,17 +86,26 @@ def create_dataset(cfg: DatasetConfig) -> tf.data.Dataset:
                     shuffle=cfg.shuffle,
                     repeat=False)
 
-def create_model(mean_path : Path, latent_size : PositiveInt, total_bins : PositiveInt):
+def create_model(mean_path : Path, latent_size : PositiveInt, total_bins : PositiveInt, bound : OptimizedBound, num_samples : PositiveInt):
     # Convert the mean of the training set to logit space so it can be used to
     # initialize the bias of the generative distribution.
     mean = datasets.get_AIS_dataset_mean(mean_path)
     generative_bias_init = -tf.math.log(1. / tf.clip_by_value(mean, 0.0001, 0.9999) - 1)
     generative_distribution_class = vrnn.ConditionalBernoulliDistribution
-    model = VRNN(total_bins,
+    if bound == OptimizedBound.elbo:
+        model = VRNN(total_bins,
                              latent_size,
                              generative_distribution_class,
                              generative_bias_init=generative_bias_init,
                              raw_sigma_bias=0.5, num_samples=1)
+    else: 
+        model = VRNNboundFIVO(
+            total_bins,
+                             latent_size,
+                             generative_distribution_class,
+                             generative_bias_init=generative_bias_init,
+                             raw_sigma_bias=0.5, num_samples=num_samples
+        )
     return model
 
 def initialize_model(train_dataset : tf.data.Dataset, model : tf.keras.Model):
@@ -104,10 +114,16 @@ def initialize_model(train_dataset : tf.data.Dataset, model : tf.keras.Model):
 
 
 
-def do_train_epoch(train_dataset : tf.data.Dataset, model : tf.keras.Model, optimizer :tf.keras.Optimizer):
+def do_train_epoch(train_dataset : tf.data.Dataset, model : tf.keras.Model, optimizer :tf.keras.Optimizer, train_size : PositiveInt):
     losses = AverageMeter()
 
-    @tf.function(reduce_retracing=True)
+    @tf.function(
+        input_signature=(
+            tf.TensorSpec(shape=[None,32,702], dtype=tf.float32,name='x'),
+            tf.TensorSpec(shape=[None,32,702], dtype=tf.float32, name='y'),
+            tf.TensorSpec(shape=[32], dtype=tf.int32, name='lengths'),
+        )
+    )
     def train_step(x,y, lengths):
         with tf.GradientTape() as tape:
             log_likelihood = model((x, y),lengths)
@@ -119,10 +135,10 @@ def do_train_epoch(train_dataset : tf.data.Dataset, model : tf.keras.Model, opti
         return loss
     
     with Progress(console=console, transient=True) as progress:
-        task = progress.add_task("Training...", total=len(train_dataset))
+        task = progress.add_task("Training...", total=train_size)
         # ugly zip since dataset iterator continues fetching by default
-        for idx, batch in zip(range(len(train_dataset)),train_dataset):
-            progress.update(task, description=f"Batch {idx + 1}/{len(train_dataset)}")
+        for idx, batch in zip(range(train_size),train_dataset):
+            progress.update(task, description=f"Batch {idx + 1}/{train_size}")
             inputs, targets, lengths = batch
             loss = train_step(inputs, targets, lengths)
             losses.update(loss)
@@ -130,10 +146,16 @@ def do_train_epoch(train_dataset : tf.data.Dataset, model : tf.keras.Model, opti
     return losses.avg
 
 
-def do_validate_epoch(val_dataset : tf.data.Dataset, model : tf.keras.Model):
+def do_validate_epoch(val_dataset : tf.data.Dataset, model : tf.keras.Model, val_size : PositiveInt):
     log_likelihood = AverageMeter()
 
-    @tf.function(reduce_retracing=True)
+    @tf.function(
+        input_signature=(
+            tf.TensorSpec(shape=[None,32,702], dtype=tf.float32,name='x'),
+            tf.TensorSpec(shape=[None,32,702], dtype=tf.float32, name='y'),
+            tf.TensorSpec(shape=[32], dtype=tf.int32, name='lengths'),
+        )
+    )
     def validate_step(x,y, lengths):
         log_likelihood = model((x, y),lengths)
         # Compute lower bounds on the log likelihood.
@@ -141,7 +163,7 @@ def do_validate_epoch(val_dataset : tf.data.Dataset, model : tf.keras.Model):
         return log_likelihood
     
     # ugly zip since dataset iterator continues fetching by default
-    for idx, batch in zip(range(len(val_dataset)),val_dataset):
+    for idx, batch in zip(range(val_size-1),val_dataset):
         inputs, targets, lengths = batch
         loss = validate_step(inputs, targets, lengths)
         log_likelihood.update(loss)
@@ -188,18 +210,20 @@ def do_validate_epoch(val_dataset : tf.data.Dataset, model : tf.keras.Model):
 @click.option("--models_dir", type=click.Path(path_type=Path, exists=False), default=Path("../output/models"), help="path to models saving")
 def main(models_dir : Path, exp : str):
     cfg = _get_config()
+    cfg.model.bound = OptimizedBound.fivo
     if cfg.random_seed:
         tf.random.set_seed(cfg.random_seed)
 
     # gather training data
-    train_dataset, val_dataset = get_cached_datasets()
+    train_dataset, val_dataset = get_datasets(cfg.dataset)
     # dataset : tf.data.Dataset = create_dataset(cfg.dataset, repeat=False) 
 
    
-    model = create_model(cfg.dataset.mean_pickle, cfg.model.latent_size, cfg.dataset.encoding_bins.total)
+    model = create_model(cfg.dataset.mean_pickle, cfg.model.latent_size, cfg.dataset.encoding_bins.total, cfg.model.bound, cfg.model.num_samples)
     # needed to initialize the LSTM weights
     initialize_model(train_dataset, model)
-    optimizer = tf.keras.optimizers.Adam(learning_rate=cfg.learning_rate)
+    # optimizer = tf.keras.optimizers.Adam(learning_rate=cfg.learning_rate)
+    optimizer = tf.keras.optimizers.AdamW(learning_rate=cfg.learning_rate)
 
     
     # checkpointing logic
@@ -225,12 +249,12 @@ def main(models_dir : Path, exp : str):
 
     for epoch in tqdm(range(start_epoch, cfg.epochs)):
         logger.info(f"Training epoch {epoch}...")
-        loss = do_train_epoch(train_dataset, model, optimizer)
+        loss = do_train_epoch(train_dataset, model, optimizer, cfg.dataset.training_size)
         logger.info(f"Training epoch {epoch}\tLoss: {loss:.2f}")
 
         if epoch % cfg.eval_frequency == 0:
             logger.info(f"Validating epoch {epoch}...")
-            avg_log_likelihood = do_validate_epoch(val_dataset, model)
+            avg_log_likelihood = do_validate_epoch(val_dataset, model, cfg.dataset.val_size)
             logger.info(f"Validation epoch {epoch}\tLog Likelihood: {avg_log_likelihood:.2f}\tLikelihood: {np.exp(avg_log_likelihood):.2e}")
             if avg_log_likelihood > ckpt.best_log_likelihood:
                 logger.info(f"Log likelihood improved {ckpt.best_log_likelihood.numpy():.2f} -> {avg_log_likelihood.numpy():.2f}, saving model...")
