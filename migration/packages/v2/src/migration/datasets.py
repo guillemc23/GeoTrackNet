@@ -190,7 +190,8 @@ def get_Tensorflow_AIS_dataset(dataset_path,
 
     # Batch sequences togther, padding them to a common length in time.
     dataset = dataset.padded_batch(batch_size,
-                                   padded_shapes=([None, total_bins ], [])
+                                   padded_shapes=([None, total_bins ], []),
+                                   drop_remainder=True
                                   )
 
 
@@ -212,7 +213,6 @@ def get_Tensorflow_AIS_dataset(dataset_path,
 
 #    dataset = dataset.prefetch(num_examples)
     dataset = dataset.prefetch(tf.data.AUTOTUNE)
-    dataset = dataset.cache()
     return dataset
 
 
