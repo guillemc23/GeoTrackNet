@@ -17,7 +17,7 @@ from pydantic_settings import BaseSettings
 class OptimizedBound(str, Enum):
     elbo = 'elbo'
     # TODO: implement fivo
-    # fivo = 'fivo' 
+    fivo = 'fivo' 
 
 class OneHotBins(BaseModel):
     lat : PositiveInt = Field(300)
@@ -34,6 +34,9 @@ class DatasetConfig(BaseModel):
     training_pickle : FilePath = None
     validation_pickle : FilePath = None
     test_pickle : FilePath = None
+
+    training_size : PositiveInt = Field(245)
+    val_size : PositiveInt = Field(38)
     
 
     mean_pickle : FilePath
@@ -44,6 +47,7 @@ class DatasetConfig(BaseModel):
 class ModelConfig(BaseModel):
     bound : OptimizedBound = OptimizedBound.elbo
     latent_size : PositiveInt = Field(128)
+    num_samples : PositiveInt = Field(16)
 
 class TrainingConfig(BaseSettings):
     # input
