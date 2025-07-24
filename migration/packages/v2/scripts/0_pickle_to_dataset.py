@@ -1,13 +1,13 @@
 from pathlib import Path
 
-import migration.datasets as datasets
+import migration.datasets_original_ds as datasets_original_ds
 from migration.config import DatasetConfig
 
 
 def _export_pickles_as_datasets(cfg : DatasetConfig):
     datadir = Path('../data/tensorflow')
     for path, export_name in zip([cfg.training_pickle, cfg.validation_pickle, cfg.test_pickle], ['train', 'validation', 'test'],):
-        dataset = datasets.get_Tensorflow_AIS_dataset(
+        dataset = datasets_original_ds.get_Tensorflow_AIS_dataset(
                     str(path),
                     cfg.batch_size,
                     cfg.encoding_bins.lat,

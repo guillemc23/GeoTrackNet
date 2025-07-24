@@ -40,8 +40,8 @@ from migration.utils import AverageMeter, console, logger
 def _get_config() -> TrainingConfig:
     return TrainingConfig(
     dataset=DatasetConfig(
-        training_parquet='../new_data/ais_train_arrow.parquet',
-        validation_parquet='../new_data/ais_val_arrow.parquet',
+        training_parquet='../new_data/ais_train.parquet',
+        validation_parquet='../new_data/ais_val.parquet',
         test_parquet='../new_data/ais_test.parquet',
         mean_pickle='../data/ct_2017010203_10_20/mean.pkl',
         shuffle=False,
@@ -52,11 +52,14 @@ def _get_config() -> TrainingConfig:
 
 def get_pandas_generator(parquet : Path):
     def get_in_memory_dataset_generator():
-        _ds = pd.read_parquet(parquet, columns=['latitude', 'longitude', 'sog', 'cog'])
+        _ds = pd.read_parquet(parquet).replace(1, 0.9999)
+        _ds.insert(0, 'temp_id', range(0, len(_ds)))
+        _ds = _ds.set_index('temp_id', append=True)
+        _ds = _ds.sort_index().reset_index(1).drop('temp_id', axis=1)
         _idxs = _ds.index.unique()
-        for idx in _idxs:
-            track = _ds.loc[idx].values
-            yield track.reshape((-1, 4))
+        for idx in range(len(_idxs)):
+            track = _ds.loc[_idxs[idx]].values
+            yield track.reshape((-1, 4)).astype(np.float32)
     return get_in_memory_dataset_generator
 
 
@@ -113,10 +116,17 @@ def initialize_model(train_dataset : tf.data.Dataset, model : tf.keras.Model):
     inputs, targets, lengths = next(iter(train_dataset))
     model((inputs, targets), lengths)
 
+def get_dataset_size(dataset : tf.data.Dataset):
+    return sum(1 for _ in dataset)
 
-
-def do_train_epoch(train_dataset : tf.data.Dataset, model : tf.keras.Model, optimizer :tf.keras.Optimizer, train_size : PositiveInt):
-    losses = AverageMeter()
+class TrainEpochManager:
+    def __init__(self, model, optimizer, dataset, dataset_size : int | None = None):
+        self.model = model 
+        self.optimizer = optimizer
+        self.dataset = dataset
+        if dataset_size is None:
+            logger.info('training dataset size not provided, calculating...')
+            self.dataset_size = get_dataset_size(dataset)
 
     @tf.function(
         input_signature=(
@@ -125,30 +135,38 @@ def do_train_epoch(train_dataset : tf.data.Dataset, model : tf.keras.Model, opti
             tf.TensorSpec(shape=[32], dtype=tf.int32, name='lengths'),
         )
     )
-    def train_step(x,y, lengths):
+    def _step(self, x, y, lengths):
         with tf.GradientTape() as tape:
-            log_likelihood = model((x, y),lengths)
+            log_likelihood = self.model((x, y),lengths)
             # Compute lower bounds on the log likelihood.
             log_likelihood = tf.reduce_mean(input_tensor=log_likelihood / tf.cast(lengths, dtype=tf.float32))
             loss = -log_likelihood
-        grads = tape.gradient(loss, model.trainable_weights)
-        optimizer.apply_gradients(zip(grads, model.trainable_weights))
+        grads = tape.gradient(loss, self.model.trainable_weights)
+        self.optimizer.apply_gradients(zip(grads, self.model.trainable_weights))
         return loss
-    
-    with Progress(console=console, transient=True) as progress:
-        task = progress.add_task("Training...", total=train_size)
-        # ugly zip since dataset iterator continues fetching by default
-        for idx, batch in zip(range(train_size),train_dataset):
-            progress.update(task, description=f"Batch {idx + 1}/{train_size}")
-            inputs, targets, lengths = batch
-            loss = train_step(inputs, targets, lengths)
-            losses.update(loss)
-            progress.advance(task)
-    return losses.avg
+
+    def do_epoch(self):
+        losses = AverageMeter()
+        with Progress(console=console, transient=True) as progress:
+            task = progress.add_task("Training...", total=self.dataset_size)
+            # ugly zip since dataset iterator continues fetching by default
+            for idx, batch in zip(range(self.dataset_size),self.dataset):
+                progress.update(task, description=f"Batch {idx + 1}/{self.dataset_size}")
+                inputs, targets, lengths = batch
+                loss = self._step(inputs, targets, lengths)
+                losses.update(loss)
+                progress.advance(task)
+        return losses.avg
 
 
-def do_validate_epoch(val_dataset : tf.data.Dataset, model : tf.keras.Model, val_size : PositiveInt):
-    log_likelihood = AverageMeter()
+class ValidationEpochManager:
+    def __init__(self, model, dataset, dataset_size : int | None = None):
+        self.model = model
+        self.dataset = dataset
+        self.dataset_size = get_dataset_size(dataset)
+        if dataset_size is None:
+            logger.info('validation dataset size not provided, calculating...')
+            self.dataset_size = get_dataset_size(dataset)
 
     @tf.function(
         input_signature=(
@@ -157,18 +175,79 @@ def do_validate_epoch(val_dataset : tf.data.Dataset, model : tf.keras.Model, val
             tf.TensorSpec(shape=[32], dtype=tf.int32, name='lengths'),
         )
     )
-    def validate_step(x,y, lengths):
-        log_likelihood = model((x, y),lengths)
+    def _step(self, x, y, lengths):
+        log_likelihood = self.model((x, y),lengths)
         # Compute lower bounds on the log likelihood.
         log_likelihood = tf.reduce_mean(input_tensor=log_likelihood / tf.cast(lengths, dtype=tf.float32))
         return log_likelihood
+
+
+    def do_epoch(self):
+        log_likelihood = AverageMeter()
+        for _, batch in zip(range(self.dataset_size),self.dataset):
+            inputs, targets, lengths = batch
+            loss = self._step(inputs, targets, lengths)
+            log_likelihood.update(loss)
+        return log_likelihood.avg
+
+
+
+# def do_train_epoch(train_dataset : tf.data.Dataset, model : tf.keras.Model, optimizer :tf.keras.Optimizer, train_size : PositiveInt):
+#     losses = AverageMeter()
+
+#     @tf.function(
+#         input_signature=(
+#             tf.TensorSpec(shape=[None,32,702], dtype=tf.float32,name='x'),
+#             tf.TensorSpec(shape=[None,32,702], dtype=tf.float32, name='y'),
+#             tf.TensorSpec(shape=[32], dtype=tf.int32, name='lengths'),
+#         )
+#     )
+#     def train_step(x,y, lengths):
+#         with tf.GradientTape() as tape:
+#             log_likelihood = model((x, y),lengths)
+#             # Compute lower bounds on the log likelihood.
+#             log_likelihood = tf.reduce_mean(input_tensor=log_likelihood / tf.cast(lengths, dtype=tf.float32))
+#             loss = -log_likelihood
+#         grads = tape.gradient(loss, model.trainable_weights)
+#         optimizer.apply_gradients(zip(grads, model.trainable_weights))
+#         return loss
     
+#     with Progress(console=console, transient=True) as progress:
+#         task = progress.add_task("Training...", total=train_size)
+#         # ugly zip since dataset iterator continues fetching by default
+#         for idx, batch in zip(range(train_size),train_dataset):
+#             progress.update(task, description=f"Batch {idx + 1}/{train_size}")
+#             inputs, targets, lengths = batch
+#             loss = train_step(inputs, targets, lengths)
+#             losses.update(loss)
+#             progress.advance(task)
+#     return losses.avg
+
+
+# def do_validate_epoch(val_dataset : tf.data.Dataset, model : tf.keras.Model, val_size : PositiveInt):
+#     log_likelihood = AverageMeter()
+
+#     @tf.function(
+#         input_signature=(
+#             tf.TensorSpec(shape=[None,32,702], dtype=tf.float32,name='x'),
+#             tf.TensorSpec(shape=[None,32,702], dtype=tf.float32, name='y'),
+#             tf.TensorSpec(shape=[32], dtype=tf.int32, name='lengths'),
+#         )
+#     )
+#     def validate_step(x,y, lengths):
+#         log_likelihood = model((x, y),lengths)
+#         # Compute lower bounds on the log likelihood.
+#         log_likelihood = tf.reduce_mean(input_tensor=log_likelihood / tf.cast(lengths, dtype=tf.float32))
+#         return log_likelihood
+    
+#     # ugly zip since dataset iterator continues fetching by default
+#     for idx, batch in zip(range(val_size-1),val_dataset):
+#         inputs, targets, lengths = batch
+#         loss = validate_step(inputs, targets, lengths)
+#         log_likelihood.update(loss)
+#     return log_likelihood.avg
+
     # ugly zip since dataset iterator continues fetching by default
-    for idx, batch in zip(range(val_size-1),val_dataset):
-        inputs, targets, lengths = batch
-        loss = validate_step(inputs, targets, lengths)
-        log_likelihood.update(loss)
-    return log_likelihood.avg
 
 # def run_train(cfg : TrainingConfig):
 
@@ -251,15 +330,17 @@ def main(models_dir : Path, exp : str):
         f.write(f'{ckpt.best_log_likelihood.numpy():.2f}')
     # Training loop
     start_epoch = int(ckpt.epoch)
+    train_epoch_manager = TrainEpochManager(model, optimizer, train_dataset, cfg.dataset.training_size)
+    val_epoch_manager = ValidationEpochManager(model, val_dataset, cfg.dataset.val_size)
 
     for epoch in tqdm(range(start_epoch, cfg.epochs)):
         logger.info(f"Training epoch {epoch}...")
-        loss = do_train_epoch(train_dataset, model, optimizer, cfg.dataset.training_size)
+        loss = train_epoch_manager.do_epoch()
         logger.info(f"Training epoch {epoch}\tLoss: {loss:.2f}")
 
         if epoch % cfg.eval_frequency == 0:
             logger.info(f"Validating epoch {epoch}...")
-            avg_log_likelihood = do_validate_epoch(val_dataset, model, cfg.dataset.val_size)
+            avg_log_likelihood = val_epoch_manager.do_epoch()
             logger.info(f"Validation epoch {epoch}\tLog Likelihood: {avg_log_likelihood:.2f}\tLikelihood: {np.exp(avg_log_likelihood):.2e}")
             if avg_log_likelihood > ckpt.best_log_likelihood:
                 logger.info(f"Log likelihood improved {ckpt.best_log_likelihood.numpy():.2f} -> {avg_log_likelihood.numpy():.2f}, saving model...")

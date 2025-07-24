@@ -8,10 +8,12 @@ dependencies = [
     "pydantic>=2.11.7",
     "pydantic-settings>=2.10.1",
     "tensorflow[and-cuda]>=2.19.0",
-    "tensorflow-probability[tensorflow,tf]>=0.25.0",
+    "tensorflow-probability[tf]>=0.25.0",
     "tqdm>=4.67.1",
     "rich>=14.0.0",
     "click>=8.2.1",
+    "fastparquet>=2024.11.0",
+    "pyarrow>=20.0.0",
 ]
 
 [build-system]
@@ -24,4 +26,7 @@ only-include = ["src/migration"]
 [dependency-groups]
 dev = [
     "ipykernel>=6.29.5",
+    "matplotlib>=3.10.3",
+    "pandas>=2.3.1",
+    "pymsteams>=0.2.5",
 ]

@@ -19,17 +19,14 @@ from pathlib import Path
 
 import click
 import numpy as np
-import pandas as pd
 import tensorflow as tf
 from pydantic import PositiveInt
 from rich.progress import Progress
-
 # from tensorflow.keras import mixed_precision
 from tqdm import tqdm
 
 import migration.datasets_original_ds as datasets_original_ds
 from migration.config import DatasetConfig, OptimizedBound, TrainingConfig
-from migration.datasets import TensorflowEncodedBatchedDatasetBuilder
 from migration.models import vrnn
 from migration.models.vrnn_elbo import VRNN
 from migration.models.vrnn_fivo import VRNNboundFIVO
@@ -40,53 +37,54 @@ from migration.utils import AverageMeter, console, logger
 def _get_config() -> TrainingConfig:
     return TrainingConfig(
     dataset=DatasetConfig(
-        training_parquet='../new_data/ais_train_arrow.parquet',
-        validation_parquet='../new_data/ais_val_arrow.parquet',
-        test_parquet='../new_data/ais_test.parquet',
+        training_pickle='../data/ct_2017010203_10_20/ct_2017010203_10_20_train.pkl',
+        validation_pickle='../data/ct_2017010203_10_20/ct_2017010203_10_20_valid.pkl',
+        test_pickle='../data/ct_2017010203_10_20/ct_2017010203_10_20_test.pkl',
         mean_pickle='../data/ct_2017010203_10_20/mean.pkl',
-        shuffle=False,
-        val_size=15813 // 32,
-        training_size=73795 // 32,
+        shuffle=True
     ), epochs=9999)
 
 
-def get_pandas_generator(parquet : Path):
-    def get_in_memory_dataset_generator():
-        _ds = pd.read_parquet(parquet, columns=['latitude', 'longitude', 'sog', 'cog'])
-        _idxs = _ds.index.unique()
-        for idx in _idxs:
-            track = _ds.loc[idx].values
-            yield track.reshape((-1, 4))
-    return get_in_memory_dataset_generator
-
+def get_cached_datasets() -> tuple[tf.data.Dataset, tf.data.Dataset]:
+    train = tf.data.Dataset.load('../data/tensorflow/train')
+    validation = tf.data.Dataset.load('../data/tensorflow/validation')
+    return train, validation
 
 
 def get_datasets(cfg : DatasetConfig) -> tuple[tf.data.Dataset, tf.data.Dataset]:
-    train_generator = get_pandas_generator(cfg.training_parquet)
-    val_generator = get_pandas_generator(cfg.validation_parquet)
-    train = TensorflowEncodedBatchedDatasetBuilder(
-        track_generator=train_generator,
-        batch_size=cfg.batch_size,
-        lat_bins=cfg.encoding_bins.lat,
-        lon_bins=cfg.encoding_bins.lon,
-        sog_bins=cfg.encoding_bins.sog,
-        cog_bins=cfg.encoding_bins.cog,
-        shuffle=cfg.shuffle,
-        repeat=True
-    ).build()
+    train = datasets_original_ds.get_Tensorflow_AIS_dataset(
+                    cfg.training_pickle,
+                    cfg.batch_size,
+                    cfg.encoding_bins.lat,
+                    cfg.encoding_bins.lon, 
+                    cfg.encoding_bins.sog,
+                    cfg.encoding_bins.cog, 
+                    shuffle=cfg.shuffle,
+                    repeat=True)
+    validation = datasets_original_ds.get_Tensorflow_AIS_dataset(
+                    cfg.validation_pickle,
+                    cfg.batch_size,
+                    cfg.encoding_bins.lat,
+                    cfg.encoding_bins.lon, 
+                    cfg.encoding_bins.sog,
+                    cfg.encoding_bins.cog, 
+                    shuffle=cfg.shuffle,
+                    repeat=True)
+    return train, validation
 
-    val = TensorflowEncodedBatchedDatasetBuilder(
-        track_generator=val_generator,
-        batch_size=cfg.batch_size,
-        lat_bins=cfg.encoding_bins.lat,
-        lon_bins=cfg.encoding_bins.lon,
-        sog_bins=cfg.encoding_bins.sog,
-        cog_bins=cfg.encoding_bins.cog,
-        shuffle=cfg.shuffle,
-        repeat=True
-    ).build()
-            
-    return train, val
+# get batch and model
+def create_dataset(cfg: DatasetConfig) -> tf.data.Dataset:
+
+    return datasets_original_ds.get_Tensorflow_AIS_dataset(
+                    cfg.training_pickle,
+                    cfg.batch_size,
+                    cfg.encoding_bins.lat,
+                    cfg.encoding_bins.lon, 
+                    cfg.encoding_bins.sog,
+                    cfg.encoding_bins.cog, 
+                    shuffle=cfg.shuffle,
+                    repeat=False)
+
 def create_model(mean_path : Path, latent_size : PositiveInt, total_bins : PositiveInt, bound : OptimizedBound, num_samples : PositiveInt):
     # Convert the mean of the training set to logit space so it can be used to
     # initialize the bias of the generative distribution.
