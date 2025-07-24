@@ -21,6 +21,7 @@ def fivo(cell,
     # batch_size represents the number of particle filters running in parallel.
     batch_size = tf.shape(input=seq_lengths)[0]
     max_seq_len = tf.reduce_max(input_tensor=seq_lengths)
+    data_dim = tf.shape(input=inputs[0])[-1]
     
     seq_mask = tf.transpose(
             a=tf.sequence_mask(seq_lengths, maxlen=max_seq_len, dtype=tf.float32),
@@ -41,9 +42,8 @@ def fivo(cell,
 
     t0 = tf.constant(0, tf.int32)
     init_states = cell.zero_state(batch_size * num_samples, tf.float32)
-    ta_names = ['log_weights', 'log_ess', 'resampled']
-    tas = [tf.TensorArray(tf.float32, max_seq_len, name='%s_ta' % n)
-             for n in ta_names]
+    
+    
     log_weights_acc = tf.zeros([num_samples, batch_size], dtype=tf.float32)
     log_p_hat_acc = tf.zeros([batch_size], dtype=tf.float32)
     kl_acc = tf.zeros([num_samples * batch_size], dtype=tf.float32)
@@ -52,7 +52,7 @@ def fivo(cell,
     def while_predicate(t, *unused_args):
         return t < max_seq_len
 
-    def while_step(t, rnn_state, tas, accs):
+    def while_step(t, rnn_state, accs):
         """Implements one timestep of FIVO computation."""
         log_weights_acc, log_p_hat_acc, kl_acc = accs
         cur_inputs, cur_mask = nested.read_tas([inputs_ta, mask_ta], t)
@@ -102,8 +102,7 @@ def fivo(cell,
         new_state = nested.gather_tensors(new_state, ancestor_inds)
         # Update the TensorArrays before we reset the weights so that we capture
         # the incremental weights and not zeros.
-        ta_updates = [log_weights_acc, log_ess, float_should_resample]
-        new_tas = [ta.write(t, x) for ta, x in zip(tas, ta_updates)]
+        
         # For the particle filters that resampled, update log_p_hat and
         # reset weights to zero.
         log_p_hat_update = tf.reduce_logsumexp(
@@ -112,20 +111,20 @@ def fivo(cell,
         log_weights_acc *= (1. - tf.tile(float_should_resample[tf.newaxis, :],
                                      [num_samples, 1]))
         new_accs = (log_weights_acc, log_p_hat_acc, kl_acc)
-        return t + 1, new_state, new_tas, new_accs
+        return t + 1, new_state, new_accs
 
-    _, _, tas, accs = tf.while_loop(cond=while_predicate,
+    _, _, accs = tf.while_loop(cond=while_predicate,
                                     body=while_step,
-                                    loop_vars=(t0, init_states, tas, accs),
+                                    loop_vars=(t0, init_states, accs),
                                     parallel_iterations=parallel_iterations,
                                     swap_memory=swap_memory)
 
-    log_weights, log_ess, resampled = [x.stack() for x in tas]
-    final_log_weights, log_p_hat, kl = accs
+
+    final_log_weights, log_p_hat, _ = accs
     # Add in the final weight update to log_p_hat.
     log_p_hat += (tf.reduce_logsumexp(input_tensor=final_log_weights, axis=0) -
                               tf.math.log(tf.cast(num_samples, dtype=tf.float32)))
-    kl = tf.reduce_mean(input_tensor=tf.reshape(kl, [num_samples, batch_size]), axis=0)
-    log_weights = tf.transpose(a=log_weights, perm=[0, 2, 1])
-    return log_p_hat, kl, log_weights, log_ess, resampled
-    return log_p_hat, kl, log_weights, log_ess, resampled
+    
+    
+    return log_p_hat
+    # return log_p_hat, kl, log_weights, log_ess, resampled

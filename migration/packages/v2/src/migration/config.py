@@ -35,8 +35,13 @@ class DatasetConfig(BaseModel):
     validation_pickle : FilePath = None
     test_pickle : FilePath = None
 
+    training_parquet : FilePath
+    validation_parquet : FilePath
+    test_parquet : FilePath
+
     training_size : PositiveInt = Field(245)
     val_size : PositiveInt = Field(38)
+    test_size : PositiveInt = Field(38)
     
 
     mean_pickle : FilePath
