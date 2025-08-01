@@ -285,6 +285,7 @@ elif config.mode == "contrario_detection":
             tmp = D["seq"]
             m_log_weights_np = D["log_weights"]
             v_A = np.zeros(len(tmp))
+            # mark as 1 those with cdf < 0.1 
             for d_timestep in range(2*6,len(tmp)):
                 d_row = int(tmp[d_timestep,0]*config.onehot_lat_reso/config.cell_lat_reso)
                 d_col = int((tmp[d_timestep,1]-config.onehot_lat_bins)*config.onehot_lat_reso/config.cell_lon_reso)
